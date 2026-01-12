@@ -7,6 +7,7 @@ func CleanRoomRandomWalk(room *Room, robot *Robot) {
 	moveCount := 0
 
 	// clean room
+	
 
 	// calculate cleaning time
 	cleaningTime := time.Since(startTime)

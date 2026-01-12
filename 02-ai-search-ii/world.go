@@ -164,6 +164,10 @@ func (room *Room) Display(robot *Robot, showPath bool) {
 	)
 }
 
+func (room *Room) IsValid(x, y int) bool {
+	return x >= 0 && x < room.Width && y >= 0 && y < room.Height && !room.Grid[x][y].Obstacle
+}
+
 func LoadRoomConfig(filename string) (*RoomConfig, error) {
 	// read the json file
 	jsonData, err := os.ReadFile(filename)
