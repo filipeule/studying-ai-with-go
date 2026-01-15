@@ -9,7 +9,7 @@ func main() {
 	var animate bool
 
 	flag.StringVar(&configFile, "file", "empty.json", "configuration file")
-	flag.StringVar(&algorithm, "algorithm", "random", "cleaning algorithm")
+	flag.StringVar(&algorithm, "algorithm", "snake", "cleaning algorithm")
 	flag.BoolVar(&animate, "animate", true, "animate while cleaning")
 	flag.Parse()
 
@@ -26,8 +26,10 @@ func main() {
 		robot.CleanRoom = CleanRoomSlam
 	case "spiral":
 		robot.CleanRoom = CleanSpiralPattern
+	case "snake":
+		robot.CleanRoom = CleanRoomSnake
 	default:
-		// do nothing
+		robot.CleanRoom = CleanRoomSnake
 	}
 
 	// clean the room

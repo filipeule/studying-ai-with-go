@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -115,12 +116,12 @@ func NewRoom(configFile string, animate bool) *Room {
 	}
 
 	return &Room{
-		Grid: grid,
-		Width: gridWidth,
-		Height: gridHeight,
+		Grid:               grid,
+		Width:              gridWidth,
+		Height:             gridHeight,
 		CleanableCellCount: cleanableCellCount,
-		CleanedCellCount: 0,
-		Animate: animate,
+		CleanedCellCount:   0,
+		Animate:            animate,
 	}
 }
 
@@ -227,6 +228,26 @@ func displaySummary(room *Room, robot *Robot, moveCount int, cleaningTime time.D
 	efficiency := float64(room.CleanedCellCount) / float64(moveCount)
 	fmt.Printf("efficiency: %.2f cells cleaned per move\n", efficiency)
 
+	// display encountered obstacles
+	obstacles := getEncounteredObstacleList(robot)
+	if len(obstacles) > 0 {
+		fmt.Printf("encountered: %s\n", strings.Join(obstacles, ", "))
+	} else {
+		fmt.Println("no obstacles encountered")
+	}
+
 	fmt.Println()
 	fmt.Println("========================================")
+}
+
+func getEncounteredObstacleList(robot *Robot) []string {
+	var obstacles []string
+
+	for name := range robot.ObstaclesEncountered {
+		if name != "wall" {
+			obstacles = append(obstacles, name)
+		}
+	}
+
+	return obstacles
 }
