@@ -6,14 +6,18 @@ import (
 
 func main() {
 	var configFile, algorithm string
-	var animate bool
+	var animate, cat bool
 
 	flag.StringVar(&configFile, "file", "empty.json", "configuration file")
 	flag.StringVar(&algorithm, "algorithm", "snake", "cleaning algorithm")
 	flag.BoolVar(&animate, "animate", true, "animate while cleaning")
+	flag.BoolVar(&cat, "cat", false, "add a cat to the room")
 	flag.Parse()
 
 	room := NewRoom(configFile, animate)
+	if cat {
+		room.Cat = NewCat(room)
+	}
 
 	// get a robot
 	robot := NewRobot(1, 1)

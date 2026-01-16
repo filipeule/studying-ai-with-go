@@ -56,6 +56,7 @@ type Room struct {
 	CleanableCellCount int
 	CleanedCellCount   int
 	Animate            bool
+	Cat                *Cat
 }
 
 func NewRoom(configFile string, animate bool) *Room {
@@ -125,7 +126,7 @@ func NewRoom(configFile string, animate bool) *Room {
 	}
 }
 
-func (room *Room) Display(robot *Robot, showPath bool) {
+func (room *Room) Display(robot *Robot, cat *Cat, showPath bool) {
 	// in windows, we can use github.com/inancgumus/screen
 	// call screen.Clean()
 
@@ -136,6 +137,8 @@ func (room *Room) Display(robot *Robot, showPath bool) {
 		for i := range room.Width {
 			if robot.Position.X == i && robot.Position.Y == j {
 				fmt.Print(charRobot)
+			} else if cat != nil && cat.Position.X == i && cat.Position.Y == j {
+				fmt.Print(charCat)
 			} else if showPath && isInPath(Point{X: i, Y: j}, robot.Path) {
 				fmt.Print(charPath)
 			} else {
@@ -163,6 +166,14 @@ func (room *Room) Display(robot *Robot, showPath bool) {
 		room.CleanedCellCount,
 		room.CleanableCellCount,
 	)
+
+	if cat != nil {
+		fmt.Printf(
+			"robot position: (%d, %d), cat position: (%d, %d)\n",
+			robot.Position.X, robot.Position.Y,
+			cat.Position.X, cat.DirectionY,
+		)
+	}
 }
 
 func (room *Room) IsValid(x, y int) bool {
@@ -198,7 +209,7 @@ func isInPath(point Point, path []Point) bool {
 func displaySummary(room *Room, robot *Robot, moveCount int, cleaningTime time.Duration) {
 	// display the final room state with the robot's path
 	fmt.Println("\nFinal room state with robot's path")
-	room.Display(robot, true)
+	room.Display(robot, room.Cat, true)
 
 	// cleaning summary information
 	fmt.Println("\n=========== Cleaning Summary ===========")

@@ -19,7 +19,7 @@ func CleanRoomRandomWalk(room *Room, robot *Robot) {
 	// clean current position
 	Clean(robot, room)
 	if room.Animate {
-		room.Display(robot, false)
+		room.Display(robot, room.Cat, false)
 		time.Sleep(moveDelay)
 	}
 
@@ -52,7 +52,7 @@ func CleanRoomRandomWalk(room *Room, robot *Robot) {
 							robot.Path = append(robot.Path, path[i])
 							Clean(robot, room)
 							if room.Animate {
-								room.Display(robot, false)
+								room.Display(robot, room.Cat, false)
 								time.Sleep(moveDelay)
 							}
 							moveCount++
@@ -77,7 +77,7 @@ func CleanRoomRandomWalk(room *Room, robot *Robot) {
 							robot.Path = append(robot.Path, path[i])
 							Clean(robot, room)
 							if room.Animate {
-								room.Display(robot, false)
+								room.Display(robot, room.Cat, false)
 								time.Sleep(moveDelay)
 							}
 							moveCount++
@@ -104,7 +104,7 @@ func CleanRoomRandomWalk(room *Room, robot *Robot) {
 					robot.Path = append(robot.Path, path[k])
 					Clean(robot, room)
 					if room.Animate {
-						room.Display(robot, false)
+						room.Display(robot, room.Cat, false)
 						time.Sleep(moveDelay)
 					}
 					moveCount++
@@ -145,7 +145,7 @@ func moveAtAngleUntilObstacle(room *Room, robot *Robot, dx, dy float64) int {
 
 		// animate if appropriate
 		if room.Animate {
-			room.Display(robot, false)
+			room.Display(robot, room.Cat, false)
 			time.Sleep(moveDelay)
 		}
 
