@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type LoanApprovalAI struct {
 	// weights for different factors used in the decision making process
 	incomeWeight      float64
@@ -20,13 +22,27 @@ type Applicant struct {
 }
 
 // ApproveLoan determines if the applicant should be approved for a loan
+func (ai *LoanApprovalAI) ApproveLoan(applicant Applicant) bool {
+	loanToIncomeRatio := 0.0
+	if applicant.income > 0 {
+		loanToIncomeRatio = applicant.loanAmount / applicant.income
+	}
 
-// Some means of determining fairness
+	score := applicant.income * ai.incomeWeight +
+		applicant.creditScore * ai.creditScoreWeight -
+		loanToIncomeRatio * ai.loanAmountWeight -
+		applicant.debtToIncome * ai.debtRatioWeight +
+		applicant.yearsEmployed * ai.employmentWeight
 
-// Check verifies if the ai model satisfies the fairness property
+	return score > ai.approvalThresold
+}
 
-// Evaluate risk
-
-// loading the csv file
-
-// VerifyModel checks if the model satisfies some property
+func PrintModelParams(model *LoanApprovalAI, description string) {
+	fmt.Printf("\n===== %s =====\n", description)
+	fmt.Printf("- Income Weight: %.2f\n", model.incomeWeight)
+	fmt.Printf("- Credit Score Weight: %.2f\n", model.creditScoreWeight)
+	fmt.Printf("- Loan Amount Weight: %.2f\n", model.loanAmountWeight)
+	fmt.Printf("- Debt Ratio Weight: %.2f\n", model.debtRatioWeight)
+	fmt.Printf("- Employment Weight: %.2f\n", model.employmentWeight)
+	fmt.Printf("- Approval Threshold: %.2f\n", model.approvalThresold)
+}
