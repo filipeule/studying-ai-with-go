@@ -40,8 +40,9 @@ func main() {
 	// place ships
 	// ai places ships (player does not see this)
 	ai.PlaceShips()
-	
+
 	// human player places ships
+	human.PlaceShips()
 
 	// main game loop
 	gameOver := false
