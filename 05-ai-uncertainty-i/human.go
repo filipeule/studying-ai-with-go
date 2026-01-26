@@ -38,6 +38,8 @@ func (p *HumanPlayer) PlaceShips() {
 	fmt.Println("Place your ships on the board")
 	fmt.Println("Format: A0 H (A0 starting position, H=horizontal or V=vertical)")
 	fmt.Println("Positions are given as letter (A-J) for column and number (0-9) for row")
+	fmt.Println("Press enter to continue...")
+	reader.ReadString('\n')
 
 	for _, shipType := range shipTypes {
 		for {
@@ -90,9 +92,9 @@ func (p *HumanPlayer) PlaceShips() {
 			for i := range shipType.size {
 				var r, c int
 				if dir == "H" {
-					r, c = row, col+i	// horizontal placement, so column increases
+					r, c = row, col+i // horizontal placement, so column increases
 				} else {
-					r, c = row+i, col	// vertical placement, so row increases
+					r, c = row+i, col // vertical placement, so row increases
 				}
 
 				// check if ship would go off the board
@@ -106,7 +108,7 @@ func (p *HumanPlayer) PlaceShips() {
 				// check if position overlaps with another ship
 				if p.board[r][c] == ship {
 					valid = false
-					fmt.Printf("ship would overlap with another ship at position %c%d\n!", 'A'+c, r)
+					fmt.Printf("ship would overlap with another ship at position %c%d!\n", 'A'+c, r)
 					time.Sleep(2 * time.Second)
 					break
 				}
@@ -134,4 +136,62 @@ func (p *HumanPlayer) PlaceShips() {
 	printBoards(&p.board, &Board{})
 	fmt.Println("\nAll ships placed! press Enter to start the game...")
 	reader.ReadString('\n')
+}
+
+func (p *HumanPlayer) GetBoard() *Board {
+	return &p.board
+}
+
+func (p *HumanPlayer) TakeTurn(opponentBoard *Board) (Position, bool) {
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Print("\nEnter target position (e.g. A0): ")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(strings.ToUpper(input))
+
+		if len(input) < 2 {
+			fmt.Println("Invalid format: use format like 'A0'")
+			continue
+		}
+
+		if input[0] < 'A' || input[0] > 'J' {
+			fmt.Println("Invalid column: must be between A and J")
+			continue
+		}
+
+		col := int(input[0] - 'A')
+
+		rowString := input[1:]
+		row, err := strconv.Atoi(rowString)
+		if err != nil || row < 0 || row >= boardSize {
+			fmt.Println("Invalid row: must be between 0 and 9")
+			continue
+		}
+
+		if opponentBoard[row][col] == hit || opponentBoard[row][col] == miss {
+			fmt.Println("You've already targeted that position!")
+			continue
+		}
+
+		// determine if it's a hit or miss
+		isHit := opponentBoard[row][col] == ship
+
+		if isHit {
+			opponentBoard[row][col] = hit
+			fmt.Println("HIT!")
+
+			// check to see if the ship is sunk
+			sunk, shipName := isShipSunk(opponentBoard, row, col, p.opponent.ships)
+			if sunk {
+				fmt.Printf("You sunk a %s!\n", shipName)
+			}
+		} else {
+			opponentBoard[row][col] = miss
+			fmt.Println("MISS!")
+		}
+
+		time.Sleep(1 * time.Second)
+		return Position{row, col}, isHit
+	}
 }
