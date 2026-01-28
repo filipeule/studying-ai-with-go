@@ -13,11 +13,8 @@ func main() {
 	// get a deck of cards
 	deck := NewDeck().Shuffle()
 
-	for _, c := range deck {
-		fmt.Printf("%s%s\n", c.Value, c.Suit)
-	}
-
 	// create a card counter of the ai to use
+	cardCounter := NewCardCounter()
 
 	for {
 		// check to see if we need to shuffle the deck
