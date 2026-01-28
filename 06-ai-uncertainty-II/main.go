@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func main() {
 	// clear the screen
@@ -18,13 +21,26 @@ func main() {
 
 	for {
 		// check to see if we need to shuffle the deck
+		if len(deck) < 10 {
+			fmt.Println("\n=== Deck is running low. Reshuffling... ===")
+			deck = NewDeck().Shuffle()
+			cardCounter.Reset()
+			fmt.Println("Deck reshuffled and card counter reset")
+		}
 
 		// play a round
+		PlayRound(&deck, cardCounter)
 
 		// ask if the player wants to play another round
+		fmt.Printf("\nPlay another round? (y/n): ")
+		var choice string
+		fmt.Scanln(&choice)
+		choice = strings.ToLower(choice)
 
 		// if not, quit the game
-
-		// clear the screen
+		if choice == "n" {
+			fmt.Println("Thanks for playing!")
+			break
+		}
 	}
 }
