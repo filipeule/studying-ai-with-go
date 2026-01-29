@@ -41,6 +41,8 @@ func main() {
 		if choice == "n" {
 			fmt.Println("Thanks for playing!")
 			break
+		} else {
+			clearScreen()
 		}
 	}
 }

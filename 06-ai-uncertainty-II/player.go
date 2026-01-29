@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -124,7 +126,7 @@ func (p *Player) handleHit(deck *Deck, cardCounter *CardCounter) bool {
 
 func (p *Player) PlayTurn(deck *Deck, cardCounter *CardCounter, dealerUpCard Card) {
 	if p.IsAI {
-
+		p.playAITurn(deck, cardCounter, dealerUpCard)
 	} else {
 		// if it's a human, let then choose what to do
 		p.playHumanTurn(deck, cardCounter)
@@ -159,4 +161,71 @@ func (p *Player) playHumanTurn(deck *Deck, cardCounter *CardCounter) {
 			fmt.Println("Invalid choices. Please try again")
 		}
 	}
+}
+
+func (p *Player) playAITurn(deck *Deck, cardCounter *CardCounter, dealerUpCard Card) {
+	fmt.Printf("\n--- %s's Turn ---\n", p.Name)
+
+	// keep going until the ai busts or decides to stand
+	for !p.IsBust {
+		// ask the ai what it wants to do
+		choice := AdvancedAIDecision(*p, dealerUpCard, cardCounter)
+
+		if choice == Stand {
+			fmt.Printf("%s chose to stand\n", p.Name)
+			break
+		}
+
+		if choice == Hit {
+			if p.handleHit(deck, cardCounter) {
+				break // ai went bust
+			}
+		}
+
+		if len(p.Hand) > 10 {
+			fmt.Printf("%s has too many cards and decides to stand.\n", p.Name)
+			break
+		}
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("\nPress enter to continue...")
+	reader.ReadString('\n')
+}
+
+func (p *Player) PlayDealerTurn(deck *Deck, cardCounter *CardCounter) {
+	if p.Name != "Dealer" {
+		return
+	}
+
+	fmt.Printf("\n--- %s's Turn ---\n", p.Name)
+	
+	fmt.Println("Dealer reveals second card:")
+	fmt.Printf("Dealer drew: %s\n", p.Hand[1].String())
+
+	cardCounter.TrackCard(p.Hand[1])
+
+	for p.Score < 17 {
+		if p.handleHit(deck, cardCounter) {
+			break // dealer went bust
+		}
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("\nPress enter to continue...")
+	reader.ReadString('\n')
+}
+
+func (p *Player) DetermineResult(dealer Player) string {
+	var result string
+	if p.IsBust {
+		result = fmt.Sprintf("%s loses (bust)", p.Name)
+	} else if dealer.IsBust || p.Score > dealer.Score {
+		result = fmt.Sprintf("%s wins!", p.Name)
+	} else if p.Score == dealer.Score {
+		result = fmt.Sprintf("%s pushes (tie)", p.Name)
+	} else {
+		result = fmt.Sprintf("%s loses", p.Name)
+	}
+	return result
 }
