@@ -13,8 +13,14 @@ from sklearn.metrics import r2_score, mean_squared_error
 
 CONFIG = {
     "default_csv": "house_data.csv",
-    "test_size": 0.2,
+    "test_size": 0.2,  # 20% of data used for testing, 80% for training
     "random_state": 42,
+    "figure_size": (10, 6),
+    "point_color": "blue",
+    "line_color": "red",
+    "grid_alpha": 0.3,
+    "output_image": "housing_regression.png",
+    "line_width": 2,
 }
 
 logging.basicConfig(
@@ -77,10 +83,34 @@ def main():
     )
 
     # create a visualization
+    create_visualization(
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        train_predictions,
+        test_predictions,
+        model,
+        scaler,
+        CONFIG["output_image"],
+        not args.no_plot,
+    )
 
     # predict price for houses not in our dataset
+    if args.predict_sqft is not None:
+        sqft_predict = args.predict_sqft
+        logger.info(
+            f"Predicting price for a house with {sqft_predict} square footage"
+        )
 
-    pass
+        predicted_price = predict_price(model, scaler, sqft_predict)
+        print(
+            f"\nPredicted price for a house with {sqft_predict} square footage:"
+            f" ${predicted_price:.2f} thousand"
+        )
+        print(
+            f"This is equivalnet to approximately ${predicted_price * 1000:.2f}"
+        )
 
 
 def parse_arguments():
@@ -93,6 +123,17 @@ def parse_arguments():
         type=str,
         default=CONFIG["default_csv"],
         help=f"Path to csv file (default: {CONFIG['default_csv']})",
+    )
+    parser.add_argument(
+        "--no-plot",
+        action="store_true",
+        help="Do not display the plot (still saves to file)",
+    )
+    parser.add_argument(
+        "-predict",
+        "--predict-sqft",
+        type=float,
+        help="Predict the price for a house with the given square footage",
     )
 
     return parser.parse_args()
@@ -217,22 +258,115 @@ def print_results(
     print(f"RMSE (training): {rmse_train:.4f}")
     print(f"RMSE (test): {rmse_test:.4f}")
 
-    train_df = pd.DataFrame({
-        "Square Footage": X_train.flatten(),
-        "Actual Price ($K)": y_train,
-        "Predicted Price ($K)": np.round(train_predictions, 2)
-    })
+    train_df = pd.DataFrame(
+        {
+            "Square Footage": X_train.flatten(),
+            "Actual Price ($K)": y_train,
+            "Predicted Price ($K)": np.round(train_predictions, 2),
+        }
+    )
 
-    test_df = pd.DataFrame({
-        "Square Footage": X_test.flatten(),
-        "Actual Price ($K)": y_test,
-        "Predicted Price ($K)": np.round(test_predictions, 2)
-    })
+    test_df = pd.DataFrame(
+        {
+            "Square Footage": X_test.flatten(),
+            "Actual Price ($K)": y_test,
+            "Predicted Price ($K)": np.round(test_predictions, 2),
+        }
+    )
 
     print("\nTraining Prediction Sample (first 5 rows):")
     print(train_df.head().to_string(index=False))
     print("\nTest Prediction Sample (first 5 rows):")
     print(test_df.head().to_string(index=False))
+
+
+def create_visualization(
+    X_train,
+    y_train,
+    X_test,
+    y_test,
+    train_predictions,
+    test_predictions,
+    model: LinearRegression,
+    scaler: StandardScaler,
+    output_file,
+    show_plot=True,
+):
+    plt.figure(figsize=CONFIG["figure_size"])
+
+    # plot the training data
+    plt.scatter(
+        X_train,
+        y_train,
+        color=CONFIG["point_color"],
+        alpha=0.7,
+        label="Training data",
+    )
+
+    # plot the testing data
+    plt.scatter(X_test, y_test, color="green", alpha=0.7, label="Test data")
+
+    x_range = np.linspace(
+        min(X_train.min(), X_test.min()),
+        max(X_train.max(), X_test.max()),
+        100,
+    ).reshape(-1, 1)
+
+    # scale the range and predict corresponding y-values
+    x_range_scaled = scaler.transform(x_range)
+    y_range_pred = model.predict(x_range_scaled)
+
+    # plot the regression line
+    plt.plot(
+        x_range,
+        y_range_pred,
+        color=CONFIG["line_color"],
+        linewidth=CONFIG["line_width"],
+        label="Regression line",
+    )
+
+    # add labels and title
+    plt.xlabel("Square Footage")
+    plt.ylabel("Price (thousands $)")
+    plt.title("Linear Regression: Housing Price vs Square Footage")
+    plt.legend()
+    plt.grid(True, alpha=CONFIG["grid_alpha"])
+
+    # calculate and display model parameters
+    assert scaler.scale_ is not None
+    assert scaler.mean_ is not None
+
+    slope = model.coef_[0] / scaler.scale_[0]
+    intercept = model.intercept_ - (
+        model.coef_[0] * scaler.mean_[0] / scaler.scale_[0]
+    )
+    r_squared_train = r2_score(y_train, train_predictions)
+    r_squared_test = r2_score(y_test, test_predictions)
+
+    # format text to display on plot
+    formula_text = f"Price = {slope:.4f} x Square Footage + {intercept:.4f}"
+    r2_train_text = f"R2 (train): {r_squared_train:.4f}"
+    r2_test_text = f"R2 (test): {r_squared_test:.4f}"
+
+    plt.figtext(0.52, 0.18, formula_text, fontsize=12)
+    plt.figtext(0.52, 0.15, r2_train_text, fontsize=12)
+    plt.figtext(0.52, 0.12, r2_test_text, fontsize=12)
+
+    plt.savefig(output_file)
+    logger.info(f"Plot save as {output_file}")
+
+    if show_plot:
+        plt.show()
+
+    plt.close()
+
+
+def predict_price(model: LinearRegression, scaler: StandardScaler, sqft: float):
+    sqft_arr = np.array([[sqft]])
+    sqft_scaled = scaler.transform(sqft_arr)
+    predicted_price = model.predict(sqft_scaled)
+
+    return predicted_price[0]
 
 
 if __name__ == "__main__":
