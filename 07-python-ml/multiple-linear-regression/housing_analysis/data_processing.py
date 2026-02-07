@@ -59,10 +59,10 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     # handle outliers
     for col in CONFIG["required_columns"]:
         # calculate mean
-        mean = processed_df.mean()
+        mean = processed_df[col].mean()
 
         # get std
-        std = processed_df[col].std
+        std = processed_df[col].std()
 
         # define thresholds
         threshold = CONFIG["outlier_threshold"]
@@ -81,8 +81,8 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def prepare_model_data(df: pd.DataFrame) -> ModelData:
     # get X and y
-    X = df[CONFIG["feature_columns"]]
-    y = df[CONFIG["target_column"]]
+    X = df[CONFIG["feature_columns"]].values
+    y = df[CONFIG["target_column"]].values
 
     # split data into training and test sets
     X_train, X_test, y_train, y_test = train_test_split(
@@ -116,4 +116,5 @@ def make_predictions(df: pd.DataFrame, model, scaler) -> np.ndarray:
         return predictions
     except Exception as e:
         error_msg = f"Error making predictions: {str(e)}"
+        logger.error(error_msg)
         raise DataProcessingError(error_msg)

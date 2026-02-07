@@ -92,8 +92,8 @@ def save_model(
 
         intercept, coefficients = get_model_formula(model_results)
         metadata = {
-            "intercept": intercept,
-            "coefficients": coefficients,
+            "intercept": float(intercept),
+            "coefficients": [float(c) for c in coefficients],
             "feature_names": CONFIG["feature_columns"],
             "target_name": CONFIG["target_column"],
             "train_r2": float(model_results.train_r2),

@@ -18,6 +18,6 @@ CONFIG = {
     "default_model_path": "housing_model.pkl",
     "default_metadata_path": "housing_model_metadata.json",
     "required_columns": ["square_footage", "bedrooms", "price_thousands"],
-    "feature_colums": ["square_footage", "bedrooms"],
+    "feature_columns": ["square_footage", "bedrooms"],
     "target_column": "price_thousands"
 }
