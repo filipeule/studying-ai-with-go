@@ -13,6 +13,10 @@ from housing_analysis import (
     preprocess_data,
     save_model,
     train_model,
+    print_results,
+    create_visualization_data,
+    create_2d_visualization,
+    create_3d_visualization,
 )
 
 from housing_analysis import logger
@@ -53,7 +57,28 @@ def main() -> int:
 
             model_results = evaluate_model(model_data, model, scaler)
 
-            print(f"Test R2: {model_results.test_r2:.4f}")
+            # print results to terminal
+            print_results(model_data, model_results)
+
+            # create visualization
+            viz_data = create_visualization_data(model_data, model_results)
+            show_plot = not args.no_plot
+
+            create_2d_visualization(
+                model_data,
+                model_results,
+                viz_data,
+                CONFIG["output_image"],
+                show_plot,
+            )
+
+            create_3d_visualization(
+                model_data,
+                model_results,
+                viz_data,
+                CONFIG['output_3d_image'],
+                show_plot,
+            )
 
             if args.save_model:
                 save_model(model_results, args.model_path, args.metadata_path)
