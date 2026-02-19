@@ -6,6 +6,10 @@ import (
 	"os"
 )
 
+func init() {
+	_ = os.MkdirAll("./visualizations", 0755)
+}
+
 func main() {
 	// parse command line arguments
 	config := parseCommandLineArgs()
@@ -32,4 +36,10 @@ func main() {
 			logger.Fatalf("error saving model: %v\n", err)
 		}
 	}
+
+	// handle predictions
+	handlePrediction(config, dataModel)
+
+	// generate plot if appropriate
+	handlePlot(config, dataModel, dataContext)
 }

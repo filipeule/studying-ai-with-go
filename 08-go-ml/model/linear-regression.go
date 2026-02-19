@@ -160,7 +160,7 @@ func TrainLinearRegression(
 }
 
 func (l *LinearRegression) PrintModelSummary() {
-	fmt.Println("\n==== Model Summary ====\n")
+	fmt.Println("\n==== Model Summary ====")
 
 	fmt.Printf("Regression Equation: %s = %.4f", l.Target, l.Intercept)
 	for i, feature := range l.Features {
@@ -199,4 +199,39 @@ func (l *LinearRegression) PrintModelSummary() {
 	if l.IsNormalized {
 		fmt.Printf("\nNote: this model was trained on normalized data. Predictions on new data will automatically be normalized.\n")
 	}
+}
+
+func (l *LinearRegression) Predict(featuresValues [][]float64) []float64 {
+	predictions := make([]float64, len(featuresValues))
+
+	for dataPointIndex, featureRow := range featuresValues {
+		// start with intercept
+		predictedValue := l.Intercept
+
+		normalizedFeatures := make([]float64, len(featureRow))
+		copy(normalizedFeatures, featureRow)
+
+		if l.IsNormalized && len(l.FeatureMeans) == len(featureRow) {
+			for i := range normalizedFeatures {
+				if l.FeaturesStdDevs[i] > 0 {
+					normalizedFeatures[i] = (featureRow[i] - l.FeatureMeans[i]) / l.FeaturesStdDevs[i]
+				} else {
+					normalizedFeatures[i] = 0
+				}
+			}
+		}
+
+		// add contribuition of each feature
+		for featureIndex, coefficient := range l.Coefficients {
+			if l.IsNormalized {
+				predictedValue += coefficient * normalizedFeatures[featureIndex]
+			} else {
+				predictedValue += coefficient * featureRow[featureIndex]
+			}
+		}
+
+		predictions[dataPointIndex] = predictedValue
+	}
+
+	return predictions
 }

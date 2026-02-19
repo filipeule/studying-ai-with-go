@@ -1,0 +1,18 @@
+version: '3'
+
+tasks:
+  train:
+    cmds:
+      - go run . -features=square_footage,bedrooms -target=price_thousands -file=house_data.csv -plot=true
+
+  save:
+    cmds:
+      - go run . -features=square_footage,bedrooms -target=price_thousands -file=house_data.csv -save=model.json
+
+  load:
+    cmds:
+      - go run . -features=square_footage,bedrooms -target=price_thousands -load=model.json
+
+  predict:
+    cmds:
+      - go run . -features=square_footage,bedrooms -target=price_thousands -file=house_data.csv -predict=square_footage=2000,bedrooms=2
