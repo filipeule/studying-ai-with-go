@@ -114,9 +114,67 @@ def save_model(
         raise ModelOperationError(error_msg)
 
 
+def save_model_to_json(
+    model_results: ModelResults, data, json_path: str
+) -> None:
+    try:
+        # create a directory if it does not exist
+        json_dir = os.path.dirname(json_path)
+        if json_dir and not os.path.exists(json_dir):
+            os.makedirs(json_dir)
+
+        standardized_coefficients = model_results.model.coef_
+        standardized_intercept = model_results.model.intercept_
+
+        feature_means = model_results.scaler.mean_
+        feature_std_devs = model_results.scaler.scale_
+
+        if feature_means is None or feature_std_devs is None:
+            raise ModelOperationError(
+                "Scaler not properly fitted: mean or scale is None"
+            )
+
+        num_samples = len(data.X_train) + len(data.X_test)
+
+        json_data = {
+            "coefficients": standardized_coefficients.tolist(),
+            "intercept": float(standardized_intercept),
+            "features": CONFIG["feature_columns"],
+            "target": CONFIG["target_column"],
+            "r_squared": float(model_results.test_r2),
+            "feature_means": feature_means.tolist(),
+            "feature_std_devs": feature_std_devs.tolist(),
+            "is_normalized": True,
+            "num_samples": num_samples,
+            "version": "1.0",
+        }
+
+        with open(json_path, "w") as f:
+            json.dump(json_data, f, indent=2)
+
+        logger.info(f"Model saved to JSON format: {json_path}")
+
+        print(
+            f"\nSaved model coefficients (standardized): {standardized_coefficients}"
+        )
+        print(f"Saved model intercept (standardized): {standardized_intercept}")
+        print(f"Feature means: {feature_means}")
+        print(f"Feature std devs: {feature_std_devs}")
+
+    except Exception as e:
+        error_msg = f"Error saving model to JSON: {str(e)}"
+        logger.info(error_msg)
+        raise ModelOperationError(error_msg)
+
+
 def get_model_formula(model_results: ModelResults) -> Tuple[float, List[float]]:
     model = model_results.model
     scaler = model_results.scaler
+
+    if scaler.mean_ is None or scaler.scale_ is None:
+        raise ModelOperationError(
+            "Scaler not properly fitted: mean or scale is None"
+        )
 
     coefficients = []
     scale = np.array(scaler.scale_)
@@ -153,12 +211,12 @@ def load_model(
             with open(metadata_path, "r") as f:
                 metadata = json.load(f)
 
-        logger.info(f'Model loaded from {model_path}')
+        logger.info(f"Model loaded from {model_path}")
         if metadata:
-            logger.info(f'Model metadata loaded from {metadata_path}')
+            logger.info(f"Model metadata loaded from {metadata_path}")
 
         return model, scaler, metadata
     except Exception as e:
-        error_msg = f'Error loading model: {str(e)}'
+        error_msg = f"Error loading model: {str(e)}"
         logger.error(error_msg)
         raise ModelOperationError(error_msg)

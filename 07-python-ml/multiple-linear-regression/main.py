@@ -17,6 +17,7 @@ from housing_analysis import (
     create_visualization_data,
     create_2d_visualization,
     create_3d_visualization,
+    save_model_to_json,
 )
 
 from housing_analysis import logger
@@ -76,12 +77,16 @@ def main() -> int:
                 model_data,
                 model_results,
                 viz_data,
-                CONFIG['output_3d_image'],
+                CONFIG["output_3d_image"],
                 show_plot,
             )
 
             if args.save_model:
                 save_model(model_results, args.model_path, args.metadata_path)
+
+            # save model to json format if requested
+            if args.save_json:
+                save_model_to_json(model_results, model_data,  args.json_path)
 
         return 0
 
@@ -145,6 +150,19 @@ def parse_arguments() -> argparse.Namespace:
         "--predict-only",
         action="store_true",
         help="Only make predictions using a loaded model, no training or evaluation",
+    )
+
+    parser.add_argument(
+        "--save-json",
+        action="store_true",
+        help="Save the trained model as JSON format",
+    )
+
+    parser.add_argument(
+        "--json-path",
+        type=str,
+        default="housing_model.json",
+        help="Path to save the model in JSON format (default: housing_model.json)",
     )
 
     args, unknown = parser.parse_known_args()

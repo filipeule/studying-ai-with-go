@@ -13,6 +13,7 @@ from housing_analysis.model import (
     load_model,
     get_model_formula,
     ModelResults,
+    save_model_to_json,
 )
 
 from housing_analysis.exceptions import (
@@ -45,10 +46,9 @@ __all__ = [
     "create_2d_visualization",
     "create_3d_visualization",
     "print_results",
-    "print_metadata",
-    "print_predictions",
     "DataProcessingError",
     "ModelOperationError",
     "logger",
     "print_results",
+    "save_model_to_json"
 ]
