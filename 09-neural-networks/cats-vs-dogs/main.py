@@ -12,10 +12,66 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 
 
+class CatDogCNN(nn.Module):
+    def __init__(self, image_size) -> None:
+        super(CatDogCNN, self).__init__()
+
+        # first convolutional block
+        # conv2d: applies 2d convolution to extract visual features
+        # 3 input channels (RGB), 32 output feature maps, 3x3 kernel
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+
+        # batchnorm2d: normalizes the output of the convolutional layer
+        # helps with faster and more stable training
+        self.bn1 = nn.BatchNorm2d(32)
+
+        # maxpool2d: reduces spatial dimensions by taking maximum in 2x2 regions
+        # this reduce computation and helps with translation invariance
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # second convolutional block
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # third convolutional block
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # forth convolutional block
+        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
+        self.bn4 = nn.BatchNorm2d(256)
+        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # calculate dimensions for a fully connected layer
+        # after 4 pooling layers (each reducing dimensions by half)
+        # the size is divided by 16
+        feature_size = image_size // 16
+        fc_input_size = 256 * feature_size * feature_size
+
+        # fully connected layers for classification
+        # takes flatten features maps and outputs class probabilities
+        self.fc1 = nn.Linear(fc_input_size, 512)
+        # dropout layer: randomly zeroes some elements during training
+        # this prevent overfitting by making the network more robust
+        self.dropout = nn.Dropout(0.5)
+
+        # final layer outputs 2 values: one per class
+        self.fc2 = nn.Linear(512, 2)
+        self.relu = nn.ReLU()
+
+
 def main() -> None:
     args = parse_args()
-
     device = setup_device()
+
+    if args.inference:
+        print("Performing inference")
+    else:
+        print("Training model")
+
+        using_workers = run_training_and_cleanup(args, device)
 
 
 def parse_args() -> argparse.Namespace:
@@ -141,14 +197,14 @@ def parse_args() -> argparse.Namespace:
         "--image_path",
         type=str,
         default=None,
-        help="Path to the image file for inference"
+        help="Path to the image file for inference",
     )
 
     parser.add_argument(
         "--model_file",
         type=str,
         default=None,
-        help="Path to the model file (.pth or .onnx) for inference"
+        help="Path to the model file (.pth or .onnx) for inference",
     )
 
     return parser.parse_args()
@@ -166,6 +222,128 @@ def setup_device() -> torch.device:
         print("Using CPU")
 
     return device
+
+
+def run_training_and_cleanup(args, device):
+    using_workers = False
+
+    try:
+        train_loader, val_loader = load_data(
+            args.data_dir,
+            args.image_size,
+            args.batch_size,
+            args.val_split,
+            device,
+            args.augmentation,
+        )
+
+        using_workers = True
+
+        model = CatDogCNN(args.image_size).to(device)
+    finally:
+        print("Cleaning resources")
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+        elif device.type == "mps":
+            gc.collect()
+            gc.collect()
+        gc.collect()
+
+
+def load_data(
+    data_dir, image_size, batch_size, val_split, device, augmentation
+):
+    warnings.filterwarnings(
+        "ignore",
+        message="Truncated File Read",
+        category=UserWarning,
+        module="PIL.TiffImagePlugin",
+    )
+
+    use_pin_memory = device.type != "mps"
+
+    val_transform = transforms.Compose(
+        [
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            ),
+        ]
+    )
+
+    if augmentation:
+        print("using data augmentation during training")
+
+        train_transform = transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(15),
+                transforms.ColorJitter(
+                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
+                ),
+                transforms.RandomAffine(
+                    degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)
+                ),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+    else:
+        print("No data augmentation")
+
+        train_transform = val_transform
+
+    try:
+        full_dataset = datasets.ImageFolder(root=data_dir)
+
+        print(f"Found {len(full_dataset)} images in total")
+        print(f"Classes: {full_dataset.classes}")
+
+        train_size = int((1 - val_split) * len(full_dataset))
+        val_size = len(full_dataset) - train_size
+
+        generator = torch.Generator().manual_seed(42)
+
+        train_indices, val_indices = random_split(
+            range(len(full_dataset)),
+            [train_size, val_size],
+            generator=generator,
+        )
+
+        train_subset = Subset(full_dataset, train_indices.indices)
+        train_subset.dataset.transform = train_transform
+
+        val_subset = Subset(full_dataset, val_indices.indices)
+        val_subset.dataset.transform = val_transform
+
+        print(f"Training set: {len(train_subset)} images")
+        print(f"Validation set: {len(val_subset)} images")
+
+    except Exception as e:
+        print(f"Error loading dataset from {data_dir}: {e}")
+        exit(1)
+
+    train_loader = DataLoader(
+        train_subset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=use_pin_memory,
+    )
+
+    val_loader = DataLoader(
+        val_subset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=use_pin_memory,
+    )
+
+    return train_loader, val_loader
 
 
 if __name__ == "__main__":
