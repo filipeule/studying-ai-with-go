@@ -61,6 +61,75 @@ class CatDogCNN(nn.Module):
         self.fc2 = nn.Linear(512, 2)
         self.relu = nn.ReLU()
 
+    def forward(self, x):
+        # convolutional feature extration
+        for i in range(1, 5):
+            # dynamically get layers for the current block (conv1, bn1, pool1, etc)
+            # getattr(self, f'conv{i}')
+            conv = getattr(self, f"conv{i}")
+            bn = getattr(self, f"bn{i}")
+            pool = getattr(self, f"pool{i}")
+
+            # step 1: apply 2d convolution
+            x = conv(x)
+
+            # step 2: apply batch normalization
+            x = bn(x)
+
+            # step 3: apply relu activation
+            x = self.relu(x)
+
+            # step 4: apply max pooling
+            x = pool(x)
+
+        # after all blocks, tensor shape is approx. [batch, 256, image_size/16]
+        # prepare for classification
+        # flatten 4d feature maps into 2d for fully connected layers
+        x = x.view(x.size(0), -1)
+
+        # classification layers
+        # first fully connected layer
+        x = self.fc1(x)
+
+        # apply relu activation
+        x = self.relu(x)
+
+        # dropout layer
+        x = self.dropout(x)
+
+        # final classification layer
+        x = self.fc2(x)
+
+        return x
+
+
+class EarlyStopping:
+    def __init__(self, patience=3, min_delta=0.001) -> None:
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+
+    def __call__(self, val_loss):
+        score = -val_loss
+
+        if self.best_score is None:
+            self.best_score = score
+        elif score < self.best_score + self.min_delta:
+            self.counter += 1
+            print(
+                f"Early stopping counter: {self.counter} out of {self.patience}"
+            )
+            if self.counter >= self.patience:
+                self.early_stop = True
+                print("Early stopping triggered!")
+        else:
+            self.best_score = score
+            self.counter = 0
+
+        return self.early_stop
+
 
 def main() -> None:
     args = parse_args()
@@ -132,7 +201,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--weigth_decay",
+        "--weight_decay",
         type=float,
         default=1e-4,
         help="Weight decay (L2 penalty) - helps prevents overfeeding by"
@@ -237,11 +306,67 @@ def run_training_and_cleanup(args, device):
             args.augmentation,
         )
 
+        print("Data loading completed successfully!")
         using_workers = True
 
+        print("Initializing neural network model...")
         model = CatDogCNN(args.image_size).to(device)
+
+        print("Model architecture:")
+        print(model)
+
+        # calculate and display total number of trainable parameters
+        # this gives us insight into model complexity and memory requirements
+        total_params = sum(
+            p.numel() for p in model.parameters() if p.requires_grad
+        )
+        print(f"Total trainable parameters: {total_params:,}")
+
+        # configure loss function
+        print("Setting up training components...")
+        criterion = nn.CrossEntropyLoss()
+
+        # configure is the optimizer
+        optimizer = optim.SGD(
+            model.parameters(),  # all model weights and biases to optimize
+            lr=args.learning_rate,  # step size for weight updates
+            momentum=args.momentum,  # momentum factor for smoother convergence
+            weight_decay=args.weight_decay,  # regularization
+        )
+
+        # learning rate scheduler
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=0.1,
+            patience=args.patience,
+        )
+
+        # training loop execution
+        print("Starting training process...")
+        print(f"Training for maximum {args.num_epochs} epochs...")
+        if args.early_stopping:
+            print(
+                "Early stopping enable: will stop if no improvement for"
+                f" {args.early_stopping_patience} epochs"
+            )
+
+        best_model_state, best_val_accuracy = train_model(
+            model,
+            train_loader,
+            val_loader,
+            criterion,
+            optimizer,
+            scheduler,
+            device,
+            args.num_epochs,
+            args.early_stopping,
+            args.early_stopping_patience,
+            args.early_stopping_min_delta,
+        )
+
     finally:
-        print("Cleaning resources")
+        print("Cleaning resources...")
         if device.type == "cuda":
             torch.cuda.empty_cache()
         elif device.type == "mps":
@@ -253,11 +378,16 @@ def run_training_and_cleanup(args, device):
 def load_data(
     data_dir, image_size, batch_size, val_split, device, augmentation
 ):
+    # warnings.filterwarnings(
+    #     "ignore",
+    #     message="Truncated File Read",
+    #     category=UserWarning,
+    #     module="PIL.TiffImagePlugin",
+    # )
     warnings.filterwarnings(
         "ignore",
-        message="Truncated File Read",
         category=UserWarning,
-        module="PIL.TiffImagePlugin",
+        module="PIL.TiffImagePlugin"
     )
 
     use_pin_memory = device.type != "mps"
@@ -344,6 +474,117 @@ def load_data(
     )
 
     return train_loader, val_loader
+
+
+def train_model(
+    model,
+    train_loader,
+    val_loader,
+    criterion,
+    optimizer,
+    scheduler,
+    device,
+    num_epochs,
+    early_stopping=False,
+    early_stopping_patience=3,
+    early_stopping_min_delta=0.001,
+):
+    print("\nStarting training...")
+
+    train_loss = []
+    val_accuracies = []
+
+    best_val_accuracy = 0.0
+    best_model_state = None
+
+    early_stopper = None
+
+    if early_stopping:
+        early_stopper = EarlyStopping(  
+            patience=early_stopping_patience,
+            min_delta=early_stopping_min_delta,
+        )
+        print(f"Early stopping enable with patience={early_stopping_patience}")
+
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+        train_loader_tqdm = tqdm(
+            train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} (Training)"
+        )
+
+        for inputs, labels in train_loader_tqdm:
+            inputs, labels = inputs.to(device), labels.to(device)
+
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            train_loader_tqdm.set_postfix(
+                loss=running_loss / (train_loader_tqdm.n + 1)
+            )
+
+        avg_train_loss = running_loss / len(train_loader)
+        train_loss.append(avg_train_loss)
+
+        # validation phase
+        model.eval()
+
+        correct_predictions = 0
+        total_samples = 0
+        val_running_loss = 0.0
+
+        with torch.no_grad():
+            val_loader_tqdm = tqdm(
+                val_loader, desc=f"Epoch {epoch + 1}/{num_epochs} (Validation)"
+            )
+
+            for inputs, labels in val_loader_tqdm:
+                inputs, labels = inputs.to(device), labels.to(device)
+
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                val_running_loss += loss.item()
+
+                _, predicted = torch.max(outputs.data, 1)
+                total_samples += labels.size(0)
+                correct_predictions += (predicted == labels).sum().item()
+
+                val_loader_tqdm.set_postfix(
+                    accuracy=f"{100 * correct_predictions / total_samples:.2f}%"
+                )
+
+        avg_val_loss = val_running_loss / len(val_loader)
+        val_accuracy = 100 * correct_predictions / total_samples
+        val_accuracies.append(val_accuracy)
+
+        scheduler.step(avg_val_loss)
+        current_lr = optimizer.param_groups[0]["lr"]
+        print(f"Current learning rate: {current_lr}")
+
+        if val_accuracy > best_val_accuracy:
+            best_val_accuracy = val_accuracy
+            best_model_state = model.state_dict().copy()
+
+            print(f"New best model: {best_val_accuracy:.2f}% accuracy")
+
+        print(
+            f"Epoch {epoch + 1}/{num_epochs}: Train loss={avg_train_loss:.2f},"
+            f" Val loss={avg_val_loss:.4f}, Val acc={val_accuracy:.2f}%"
+        )
+
+        if early_stopping and early_stopper(avg_val_loss):
+            print(f"Early stopping triggered after {epoch + 1} epochs")
+            break
+
+    print(
+        f"Training finished! Best validation accuracy: {best_val_accuracy:.2f}%"
+    )
+
+    return best_model_state, best_val_accuracy
 
 
 if __name__ == "__main__":
