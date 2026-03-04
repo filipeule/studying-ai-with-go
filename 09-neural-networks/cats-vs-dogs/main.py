@@ -132,15 +132,63 @@ class EarlyStopping:
 
 
 def main() -> None:
+    setup_warning_supression()
+
     args = parse_args()
     device = setup_device()
 
     if args.inference:
         print("Performing inference")
+
+        if not args.image_path:
+            print("Error: --image_path is required for inference")
+            exit(1)
+
+        if args.model_file:
+            model_file = args.model_file
+        elif Path(args.model_path).exists():
+            model_file = args.model_path
+            print(f"Using default PyTorch model: {model_file}")
+        elif Path(args.onnx_path).exists():
+            model_file = args.onnx_path
+            print(f"Using default onnx model: {model_file}")
+        else:
+            print("Error: no trained model found")
+            exit(1)
+
+        run_inference(args.image_path, model_file, args.image_size, device)
+        return
+
     else:
         print("Training model")
 
         using_workers = run_training_and_cleanup(args, device)
+
+        if using_workers:
+            print("Forcing clean exit...")
+            os._exit(0)
+
+
+def setup_warning_supression():
+    import warnings
+    import PIL.Image
+
+    warnings.filterwarnings("ignore", message="Truncated File Read")
+    warnings.filterwarnings(
+        "ignore", message=".*Truncated.*", category=UserWarning
+    )
+    warnings.filterwarnings(
+        "ignore", category=UserWarning, module="PIL.TiffImagePlugin"
+    )
+    warnings.filterwarnings(
+        "ignore", message=".*EXIF.*", category=UserWarning
+    )
+    warnings.filterwarnings(
+        "ignore", message=".*palette.*", category=UserWarning
+    )
+    PIL.Image.warnings.simplefilter(
+        "ignore", PIL.Image.DecompressionBombWarning
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -293,6 +341,81 @@ def setup_device() -> torch.device:
     return device
 
 
+def run_inference(image_path, model_file, image_size, device):
+    import numpy as np
+    from PIL import Image
+
+    if not Path(image_path).exists() or not Path(model_file).exists():
+        print("Error: image or model not found")
+        return None, None
+
+    transform = transforms.Compose(
+        [
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            ),
+        ]
+    )
+
+    try:
+        image = Image.open(image_path).convert("RGB")
+        input_tensor = transform(image).unsqueeze(0).to(device)
+    except Exception as e:
+        print(f"Error loading image: {e}")
+        return None, None
+
+    if Path(model_file).suffix == ".pth":
+        model = CatDogCNN(image_size).to(device)
+
+        try:
+            model.load_state_dict(torch.load(model_file, map_location=device))
+            model.eval()
+
+            with torch.no_grad():
+                outputs = model(input_tensor)
+                probabilities = torch.nn.functional.softmax(outputs, dim=1)
+                confidence, predicted = torch.max(probabilities, 1)
+                pred_class = ["cat", "dog"][predicted.item()]
+                conf_score = confidence.item()
+        except Exception as e:
+            print(f"Error with PyTorch model: {e}")
+            return None, None
+    elif Path(model_file).suffix == ".onnx":
+        try:
+            import onnxruntime as ort
+
+            ort_session = ort.InferenceSession(model_file)
+            ort_inputs = {
+                ort_session.get_inputs()[0].name: input_tensor.cpu().numpy()
+            }
+            ort_outputs = ort_session.run(None, ort_inputs)
+            outputs = ort_outputs[0]
+
+            def softmax(x):
+                exp_x = np.exp(x - np.max(x))
+                return exp_x / exp_x.sum()
+
+            probabilities = softmax(outputs[0])
+            predicted = np.argmax(probabilities)
+            pred_class = ["cat", "dog"][predicted]
+            conf_score = float(probabilities[predicted])
+
+        except Exception as e:
+            print(f"Error with ONNX model: {e}")
+            return None, None
+    else:
+        print("Error: unsupported model format")
+        return None, None
+
+    print(
+        f"\nInference results:\nImage: {image_path}\nPrediction: {pred_class}\nConfidence: {conf_score:.2f}"
+    )
+
+    return pred_class, conf_score
+
+
 def run_training_and_cleanup(args, device):
     using_workers = False
 
@@ -365,6 +488,36 @@ def run_training_and_cleanup(args, device):
             args.early_stopping_min_delta,
         )
 
+        # best model restoration
+        if best_model_state is not None:
+            model.load_state_dict(best_model_state)
+            print(
+                f"Restored best model state (validation accuracy: {best_val_accuracy:.2f})%"
+            )
+        else:
+            print("Warning: No best model state saved, using final epoch model")
+
+        # model persistence
+        print("Saving training model...")
+        save_model(
+            model, args.model_path, args.onnx_path, args.image_size, device
+        )
+        print("Model saved sucessfully!")
+        print("\n" + "=" * 50)
+        print("ALL TRAINING OPERATIONS COMPLETE SUCCESSFULLY!")
+        print("=" * 50)
+
+        # immediate cleanup of large objects for smooth operation
+        del train_loader
+        del val_loader
+        del model
+
+        return using_workers
+
+    except Exception as e:
+        print(f"\nERROR DURING TRAINING: {e}")
+        print("Proceeding with cleanup and resource deallocation")
+        return using_workers
     finally:
         print("Cleaning resources...")
         if device.type == "cuda":
@@ -385,9 +538,7 @@ def load_data(
     #     module="PIL.TiffImagePlugin",
     # )
     warnings.filterwarnings(
-        "ignore",
-        category=UserWarning,
-        module="PIL.TiffImagePlugin"
+        "ignore", category=UserWarning, module="PIL.TiffImagePlugin"
     )
 
     use_pin_memory = device.type != "mps"
@@ -500,7 +651,7 @@ def train_model(
     early_stopper = None
 
     if early_stopping:
-        early_stopper = EarlyStopping(  
+        early_stopper = EarlyStopping(
             patience=early_stopping_patience,
             min_delta=early_stopping_min_delta,
         )
@@ -585,6 +736,35 @@ def train_model(
     )
 
     return best_model_state, best_val_accuracy
+
+
+def save_model(model, model_path, onnx_path, image_size, device):
+    torch.save(model.state_dict(), model_path)
+    print(f"PyTorch model saved to {model_path}")
+
+    model.eval()
+    dummy_input = torch.randn(1, 3, image_size, image_size).to(device)
+
+    try:
+        with torch.no_grad():
+            torch.onnx.export(
+                model,
+                dummy_input,
+                onnx_path,
+                export_params=True,
+                opset_version=18,
+                do_constant_folding=True,
+                input_names=["input"],
+                output_names=["output"],
+                dynamic_axes={
+                    "input": {0: "batch_size"},
+                    "output": {0: "batch_size"},
+                },
+            )
+
+        print(f"Model exported to onnx format at {onnx_path}")
+    except Exception as e:
+        print(f"Error during onnx export: {e}")
 
 
 if __name__ == "__main__":
